@@ -8464,10 +8464,10 @@ var ASM_CONSTS = {
 
   
   
-  function _emscripten_set_main_loop(func, fps, simulateInfiniteLoop) {
-      var browserIterationFunc = getWasmTableEntry(func);
-      setMainLoop(browserIterationFunc, fps, simulateInfiniteLoop);
-    }
+  var _emscripten_set_main_loop_arg = function(func, arg, fps, simulateInfiniteLoop) {
+      var browserIterationFunc = () => getWasmTableEntry(func)(arg);
+      setMainLoop(browserIterationFunc, fps, simulateInfiniteLoop, arg);
+    };
 
   
   
@@ -9412,7 +9412,7 @@ var wasmImports = {
   emscripten_set_keydown_callback_on_thread: _emscripten_set_keydown_callback_on_thread,
   emscripten_set_keypress_callback_on_thread: _emscripten_set_keypress_callback_on_thread,
   emscripten_set_keyup_callback_on_thread: _emscripten_set_keyup_callback_on_thread,
-  emscripten_set_main_loop: _emscripten_set_main_loop,
+  emscripten_set_main_loop_arg: _emscripten_set_main_loop_arg,
   emscripten_set_mousedown_callback_on_thread: _emscripten_set_mousedown_callback_on_thread,
   emscripten_set_mouseenter_callback_on_thread: _emscripten_set_mouseenter_callback_on_thread,
   emscripten_set_mouseleave_callback_on_thread: _emscripten_set_mouseleave_callback_on_thread,
