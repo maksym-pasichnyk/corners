@@ -1,9 +1,14 @@
 #pragma once
 
+#include <set>
+#include <deque>
+#include <array>
+#include <mutex>
+#include <vector>
+#include <memory>
 #include <numbers>
 #include <variant>
-#include <memory>
-#include <mutex>
+#include <unordered_map>
 
 #include "fmt/format.h"
 
@@ -307,6 +312,16 @@ protected:
 
     std::unique_ptr<T, Dtor> handle;
 };
+
+template<std::invocable Fn>
+struct Lazy : Fn {
+    explicit operator auto() {
+        return Fn::operator()();
+    }
+};
+
+template<std::invocable Fn>
+Lazy(Fn) -> Lazy<Fn>;
 
 #define label_(name)                    \
     if constexpr (false) {              \

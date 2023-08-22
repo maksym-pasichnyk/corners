@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SDL.h"
-//#include "GL/glew.h"
+#include "stb_image.h"
 
 struct LogicalSize {
     u32 width;
@@ -116,41 +116,8 @@ struct WindowBuilder {
     }
 };
 
-//struct Renderer {
-//    static auto new_(Window& window) -> Renderer {
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-//
-//        auto* context = SDL_GL_CreateContext(window.native_handle());
-//
-//        return Renderer(context);
-//    }
-//
-//    auto native_handle() const -> SDL_GLContext {
-//        return handle.get();
-//    }
-//
-//private:
-//    struct Drop {
-//        void operator()(SDL_GLContext ptr) {
-//            SDL_GL_DeleteContext(ptr);
-//        }
-//    };
-//
-//    explicit Renderer() : handle(nullptr) {}
-//    explicit Renderer(SDL_GLContext ptr) : handle(ptr) {}
-//
-//    std::unique_ptr<std::remove_pointer_t<SDL_GLContext>, Drop> handle;
-//};
 struct Renderer {
     static auto new_(Window& window) -> Renderer {
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-
         return Renderer(SDL_CreateRenderer(window.native_handle(), -1, 0));
     }
 
@@ -238,21 +205,38 @@ private:
     std::atomic_bool _flag;
 };
 
+#ifdef EMSCRIPTEN
+typedef void (*em_callback_func)();
+typedef void (*em_arg_callback_func)(void*);
+
+extern "C" void emscripten_set_main_loop(void(*)(), i32, i32);
+extern "C" void emscripten_set_main_loop_arg(void(*)(void*), void*, i32, i32);
+extern "C" void emscripten_cancel_main_loop();
+#endif
+
 struct EventLoop {
     static auto new_() -> EventLoop {
         return {};
     }
 
-    template<std::invocable<Event const&, ControlFlow&> Fn>
+    template<typename Fn> /*requires std::invocable<Fn, Event const&, ControlFlow&>*/
     void run(Fn&& fn) {
+#ifdef EMSCRIPTEN
+        static auto* p_fn = new Fn(std::forward<Fn>(fn));
+        emscripten_set_main_loop([] {
+            (*p_fn)();
+        }, -1, 1);
+#else
         ControlFlow control_flow;
         while (!control_flow.exit_requested()) {
-            while (auto event = poll_event()) {
-                fn(*event, control_flow);
-            }
-
-            fn(Event(Event::RequestRedraw()), control_flow);
+            fn();
         }
+#endif
+//            while (auto event = poll_event()) {
+//                fn(*event, control_flow);
+//            }
+//
+//            fn(Event(Event::RequestRedraw()), control_flow);
     }
 
     static auto poll_event() -> Option<Event> {
@@ -316,5 +300,86 @@ struct EventLoop {
                 return None;
             }
         }
+    }
+};
+
+struct Texture {
+    std::string path;
+};
+
+struct GpuTexture {
+    SDL_Texture* native_handle;
+};
+
+template<typename T>
+struct AssetLoader;
+
+template<>
+struct AssetLoader<Texture> {
+    using Result = GpuTexture;
+
+    struct Drop {
+        static auto operator()(u8* ptr) {
+            stbi_image_free(ptr);
+        }
+    };
+
+    using Image = std::unique_ptr<u8[], Drop>;
+
+    static auto open(Texture const& texture, Renderer& renderer) -> Option<Result> {
+        i32 width;
+        i32 height;
+        stbi_set_flip_vertically_on_load_thread(true);
+        auto image = Image(stbi_load(texture.path.c_str(), &width, &height, nullptr, 4));
+        if (image == nullptr) {
+            return None;
+        }
+
+        auto* surface = SDL_CreateRGBSurfaceWithFormatFrom(image.get(), width, height, 0, width * 4, SDL_PIXELFORMAT_ABGR8888);
+        auto* native_handle = SDL_CreateTextureFromSurface(renderer.native_handle(), surface);
+        SDL_FreeSurface(surface);
+        return GpuTexture(native_handle);
+    }
+};
+
+template<typename T>
+struct Handle {
+    u64 resource;
+
+    friend auto operator<=>(Handle const&, Handle const&) noexcept = default;
+};
+
+template<typename T>
+struct std::hash<Handle<T>> {
+    static auto operator()(Handle<T> const& self) -> size_t {
+        return std::hash<u64>{}(self.resource);
+    }
+};
+
+template<typename T>
+struct Assets {
+    using Loader = AssetLoader<T>;
+    using Resource = Loader::Result;
+
+    auto add(T resource, Renderer& renderer) -> Handle<T> {
+        auto handle = Handle<T>(next_resource++);
+        resources.emplace(handle, Loader::open(resource, renderer).unwrap());
+        return handle;
+    }
+
+    auto get(Handle<T> const& handle) & -> Resource& {
+        return resources.at(handle);
+    }
+
+private:
+    u64 next_resource = 0;
+    std::unordered_map<Handle<T>, Resource> resources;
+};
+
+struct AssetManager {
+    Assets<Texture> textures;
+
+    static auto new_() -> AssetManager {
+        return {};
     }
 };
