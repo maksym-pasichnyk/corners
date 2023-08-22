@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SDL.h"
-#include "GL/glew.h"
+//#include "GL/glew.h"
 
 struct LogicalSize {
     u32 width;
@@ -116,33 +116,63 @@ struct WindowBuilder {
     }
 };
 
+//struct Renderer {
+//    static auto new_(Window& window) -> Renderer {
+//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
+//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+//
+//        auto* context = SDL_GL_CreateContext(window.native_handle());
+//
+//        return Renderer(context);
+//    }
+//
+//    auto native_handle() const -> SDL_GLContext {
+//        return handle.get();
+//    }
+//
+//private:
+//    struct Drop {
+//        void operator()(SDL_GLContext ptr) {
+//            SDL_GL_DeleteContext(ptr);
+//        }
+//    };
+//
+//    explicit Renderer() : handle(nullptr) {}
+//    explicit Renderer(SDL_GLContext ptr) : handle(ptr) {}
+//
+//    std::unique_ptr<std::remove_pointer_t<SDL_GLContext>, Drop> handle;
+//};
 struct Renderer {
     static auto new_(Window& window) -> Renderer {
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
+//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+//        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
 
-        auto* context = SDL_GL_CreateContext(window.native_handle());
-
-        return Renderer(context);
+        return Renderer(SDL_CreateRenderer(window.native_handle(), -1, 0));
     }
 
-    auto native_handle() const -> SDL_GLContext {
+    auto native_handle() const -> SDL_Renderer* {
         return handle.get();
+    }
+
+    void present() {
+        SDL_RenderPresent(handle.get());
     }
 
 private:
     struct Drop {
-        void operator()(SDL_GLContext ptr) {
-            SDL_GL_DeleteContext(ptr);
+        void operator()(SDL_Renderer* ptr) {
+            SDL_DestroyRenderer(ptr);
         }
     };
 
     explicit Renderer() : handle(nullptr) {}
-    explicit Renderer(SDL_GLContext ptr) : handle(ptr) {}
+    explicit Renderer(SDL_Renderer* ptr) : handle(ptr) {}
 
-    std::unique_ptr<std::remove_pointer_t<SDL_GLContext>, Drop> handle;
+    std::unique_ptr<SDL_Renderer, Drop> handle;
 };
 
 struct Event_Quit {};
