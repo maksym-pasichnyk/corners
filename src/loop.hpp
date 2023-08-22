@@ -222,21 +222,31 @@ struct EventLoop {
     template<typename Fn> /*requires std::invocable<Fn, Event const&, ControlFlow&>*/
     void run(Fn&& fn) {
 #ifdef EMSCRIPTEN
-        static auto* p_fn = new Fn(std::forward<Fn>(fn));
-        emscripten_set_main_loop([] {
-            (*p_fn)();
-        }, -1, 1);
+        struct LoopContext {
+            Fn& fn;
+            ControlFlow control_flow;
+        };
+
+        auto ctx = LoopContext(fn, {});
+        emscripten_set_main_loop_arg([](void* arg) {
+            auto* ctx = static_cast<LoopContext*>(arg);
+            while (auto event = poll_event()) {
+                ctx->fn(*event, ctx->control_flow);
+            }
+            ctx->fn(Event(Event::RequestRedraw()), ctx->control_flow);
+        }, &ctx, -1, 1);
+
+        std::unreachable();
 #else
         ControlFlow control_flow;
         while (!control_flow.exit_requested()) {
-            fn();
+            while (auto event = poll_event()) {
+                fn(*event, control_flow);
+            }
+
+            fn(Event(Event::RequestRedraw()), control_flow);
         }
 #endif
-//            while (auto event = poll_event()) {
-//                fn(*event, control_flow);
-//            }
-//
-//            fn(Event(Event::RequestRedraw()), control_flow);
     }
 
     static auto poll_event() -> Option<Event> {
