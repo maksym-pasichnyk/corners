@@ -164,6 +164,8 @@ struct Event_MouseButtonDown {
     i32 x;
     i32 y;
 };
+struct Event_EventsCleared {};
+struct Event_LoopExiting {};
 
 struct Event_MouseMotion {
     u32 timestamp;
@@ -179,15 +181,19 @@ struct Event_MouseMotion {
 struct Event : Enum<
     Event_Quit,
     Event_RequestRedraw,
+    Event_EventsCleared,
+    Event_LoopExiting,
     Event_MouseMotion,
     Event_MouseButtonUp,
     Event_MouseButtonDown
 > {
     using Quit = Event_Quit;
     using RequestRedraw = Event_RequestRedraw;
+    using EventsCleared = Event_EventsCleared;
     using MouseMotion = Event_MouseMotion;
     using MouseButtonUp = Event_MouseButtonUp;
     using MouseButtonDown = Event_MouseButtonDown;
+    using LoopExiting = Event_LoopExiting;
 
     using Enum::Enum;
 };
@@ -219,33 +225,41 @@ struct EventLoop {
         return {};
     }
 
-    template<typename Fn> /*requires std::invocable<Fn, Event const&, ControlFlow&>*/
-    void run(Fn&& fn) {
+    template<typename Fn> requires std::invocable<Fn, Event const&, ControlFlow&>
+    [[noreturn]] void run(Fn&& fn) {
 #ifdef EMSCRIPTEN
-        struct LoopContext {
-            Fn& fn;
-            ControlFlow control_flow;
+        struct EventHandler {
+            Fn fn;
         };
 
-        auto ctx = LoopContext(fn, {});
+        auto* handler = new EventHandler(std::forward<Fn>(fn));
         emscripten_set_main_loop_arg([](void* arg) {
-            auto* ctx = static_cast<LoopContext*>(arg);
-            while (auto event = poll_event()) {
-                ctx->fn(*event, ctx->control_flow);
-            }
-            ctx->fn(Event(Event::RequestRedraw()), ctx->control_flow);
-        }, &ctx, -1, 1);
+            ControlFlow control_flow = {};
 
+            auto* handler = static_cast<EventHandler*>(arg);
+            while (auto event = poll_event()) {
+                handler->fn(*event, control_flow);
+            }
+            handler->fn(Event(Event::EventsCleared()), control_flow);
+            handler->fn(Event(Event::RequestRedraw()), control_flow);
+
+            if (control_flow.exit_requested()) {
+                handler->fn(Event(Event::LoopExiting()), control_flow);
+                emscripten_cancel_main_loop();
+            }
+        }, handler, -1, 1);
         std::unreachable();
 #else
-        ControlFlow control_flow;
+        ControlFlow control_flow = {};
         while (!control_flow.exit_requested()) {
             while (auto event = poll_event()) {
                 fn(*event, control_flow);
             }
-
+            fn(Event(Event::EventsCleared()), control_flow);
             fn(Event(Event::RequestRedraw()), control_flow);
         }
+        fn(Event(Event::LoopExiting()), control_flow);
+        std::exit(0);
 #endif
     }
 

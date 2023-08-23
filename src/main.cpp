@@ -27,7 +27,6 @@ struct Rect {
 };
 
 struct GameState {
-    AssetManager                asset_manager   = {};
     Handle<Texture>             board_texture   = {};
     Handle<Texture>             black_texture   = {};
     Handle<Texture>             white_texture   = {};
@@ -126,28 +125,27 @@ auto main(i32 argc, const char* argv[]) -> i32 {
         .set_title("Corners")
         .set_size(LogicalSize(450, 450))
         .create();
+
     auto renderer = Renderer::new_(window);
+    auto asset_manager = AssetManager::new_();
 
-    auto gs = GameState();
-
-    gs.mode = Mode::White;
-    gs.next = Mode::Black;
-
-    gs.asset_manager = AssetManager::new_();
-    gs.board_texture = gs.asset_manager.textures.add(Texture("assets/board.png"), renderer);
-    gs.black_texture = gs.asset_manager.textures.add(Texture("assets/black.png"), renderer);
-    gs.white_texture = gs.asset_manager.textures.add(Texture("assets/white.png"), renderer);
-    gs.select_texture = gs.asset_manager.textures.add(Texture("assets/select.png"), renderer);
+    auto gs = GameState {
+        .mode = Mode::White,
+        .next = Mode::Black,
+    };
+    gs.board_texture = asset_manager.textures.add(Texture("assets/board.png"), renderer);
+    gs.black_texture = asset_manager.textures.add(Texture("assets/black.png"), renderer);
+    gs.white_texture = asset_manager.textures.add(Texture("assets/white.png"), renderer);
+    gs.select_texture = asset_manager.textures.add(Texture("assets/select.png"), renderer);
 
     init_board(gs);
-
     event_loop.run([
         mouse_pressed = false,
-        gs = std::move(gs),
+        gs = gs,
         window = std::move(window),
-        renderer = std::move(renderer)
+        renderer = std::move(renderer),
+        asset_manager = std::move(asset_manager)
     ](auto const& event, auto& control_flow) mutable {
-//        static bool mouse_pressed = false;
         match_(event) {
             case_(Event::Quit const&) {
                 control_flow.request_exit();
@@ -156,6 +154,7 @@ auto main(i32 argc, const char* argv[]) -> i32 {
             case_(Event::MouseButtonDown const&) {
                 mouse_pressed = true;
             },
+            case_(Event::EventsCleared const&) {},
             case_(Event::RequestRedraw const&) {
                 static constexpr auto cell_size = 450.0F / 8.0F;
 
@@ -166,7 +165,7 @@ auto main(i32 argc, const char* argv[]) -> i32 {
                 i32 mouse_y;
                 SDL_GetMouseState(&mouse_x, &mouse_y);
 
-                draw_sprite(renderer, gs.asset_manager.textures.get(gs.board_texture), 0, 0, 450.0F, 450.0F);
+                draw_sprite(renderer, asset_manager.textures.get(gs.board_texture), 0, 0, 450.0F, 450.0F);
 
                 for (i32 x = 0; x < 8; ++x) {
                     for (i32 y = 0; y < 8; ++y) {
@@ -196,9 +195,9 @@ auto main(i32 argc, const char* argv[]) -> i32 {
                                     gs.next = Mode::White;
                                 }
                                 if (gs.cell && (*gs.cell == i32vec2(x, y))) {
-                                    draw_sprite(renderer, gs.asset_manager.textures.get(gs.select_texture), px, py, cell_size, cell_size);
+                                    draw_sprite(renderer, asset_manager.textures.get(gs.select_texture), px, py, cell_size, cell_size);
                                 }
-                                draw_sprite(renderer, gs.asset_manager.textures.get(gs.black_texture), px, py, cell_size, cell_size);
+                                draw_sprite(renderer, asset_manager.textures.get(gs.black_texture), px, py, cell_size, cell_size);
                                 break;
                             }
                             case State::White: {
@@ -207,9 +206,9 @@ auto main(i32 argc, const char* argv[]) -> i32 {
                                     gs.next = Mode::Black;
                                 }
                                 if (gs.cell && (*gs.cell == i32vec2(x, y))) {
-                                    draw_sprite(renderer, gs.asset_manager.textures.get(gs.select_texture), px, py, cell_size, cell_size);
+                                    draw_sprite(renderer, asset_manager.textures.get(gs.select_texture), px, py, cell_size, cell_size);
                                 }
-                                draw_sprite(renderer, gs.asset_manager.textures.get(gs.white_texture), px, py, cell_size, cell_size);
+                                draw_sprite(renderer, asset_manager.textures.get(gs.white_texture), px, py, cell_size, cell_size);
                                 break;
                             }
                         }
@@ -220,6 +219,7 @@ auto main(i32 argc, const char* argv[]) -> i32 {
 
                 mouse_pressed = false;
             },
+            case_(Event::LoopExiting const&) {},
             case_(auto&) {}
         };
     });
